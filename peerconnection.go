@@ -1108,7 +1108,41 @@ func (pc *PeerConnection) SetRemoteDescription(desc SessionDescription) error { 
 			pc.ops.Enqueue(func() {
 				pc.startRTP(true, &desc, currentTransceivers)
 			})
+		} else if pc.dtlsTransport.State() != DTLSTransportStateNew {
+			fingerprint, fingerprintHash, fErr := extractFingerprint(desc.parsed)
+			if fErr != nil {
+				return fErr
+			}
+
+			fingerPrintDidChange := true
+
+			for _, fp := range pc.dtlsTransport.remoteParameters.Fingerprints {
+				if fingerprint == fp.Value && fingerprintHash == fp.Algorithm {
+					fingerPrintDidChange = false
+					break
+				}
+			}
+
+			if fingerPrintDidChange {
+				pc.ops.Enqueue(func() {
+					if dErr := pc.dtlsTransport.Stop(); dErr != nil {
+						pc.log.Warnf("Failed to stop DTLS: %s", dErr)
+					}
+
+					// Restart the dtls transport with updated fingerprints
+					err = pc.dtlsTransport.Start(DTLSParameters{
+						Role:         dtlsRoleFromRemoteSDP(desc.parsed),
+						Fingerprints: []DTLSFingerprint{{Algorithm: fingerprintHash, Value: fingerprint}},
+					})
+					pc.updateConnectionState(pc.ICEConnectionState(), pc.dtlsTransport.State())
+					if err != nil {
+						pc.log.Warnf("Failed to restart DTLS: %s", err)
+						return
+					}
+				})
+			}
 		}
+
 		return nil
 	}
 

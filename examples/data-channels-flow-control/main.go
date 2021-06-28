@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"sync/atomic"
@@ -120,7 +121,10 @@ func createAnswerer() *webrtc.PeerConnection {
 
 func main() {
 	offerPC := createOfferer()
+	defer func() { _ = offerPC.Close() }()
+
 	answerPC := createAnswerer()
+	defer func() { _ = answerPC.Close() }()
 
 	// Set ICE Candidate handler. As soon as a PeerConnection has gathered a candidate
 	// send it to the other peer
@@ -135,6 +139,20 @@ func main() {
 	offerPC.OnICECandidate(func(i *webrtc.ICECandidate) {
 		if i != nil {
 			check(answerPC.AddICECandidate(i.ToJSON()))
+		}
+	})
+
+	ctx, done := context.WithCancel(context.Background())
+
+	answerPC.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		if s == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
+	})
+
+	offerPC.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		if s == webrtc.ICEConnectionStateDisconnected {
+			done()
 		}
 	})
 
@@ -155,6 +173,6 @@ func main() {
 
 	setRemoteDescription(offerPC, desc2)
 
-	// Block forever
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }

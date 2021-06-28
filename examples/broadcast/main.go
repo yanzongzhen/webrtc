@@ -38,6 +38,7 @@ func main() { // nolint:gocognit
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = peerConnection.Close() }()
 
 	// Allow us to receive 1 video track
 	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {

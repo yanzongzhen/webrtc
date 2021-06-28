@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -21,7 +22,7 @@ func main() {
 	// Setup the codecs you want to use.
 	// We'll use a VP8 and Opus but you can also define your own
 	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/VP8", ClockRate: 90000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
+		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
 		PayloadType:        96,
 	}, webrtc.RTPCodecTypeVideo); err != nil {
 		panic(err)
@@ -54,9 +55,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = peerConnection.Close() }()
 
 	// Create Track that we send video back to browser on
-	outputTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video", "pion")
+	outputTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "video", "pion")
 	if err != nil {
 		panic(err)
 	}
@@ -117,10 +119,17 @@ func main() {
 			}
 		}
 	})
+
+	ctx, done := context.WithCancel(context.Background())
+
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
+
+		if connectionState == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
 	})
 
 	// Create an answer
@@ -145,6 +154,6 @@ func main() {
 	// Output the answer in base64 so we can paste it in browser
 	fmt.Println(signal.Encode(*peerConnection.LocalDescription()))
 
-	// Block forever
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }

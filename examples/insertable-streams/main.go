@@ -28,9 +28,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = peerConnection.Close() }()
 
 	// Create a video track
-	videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video", "pion")
+	videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "video", "pion")
 	if err != nil {
 		panic(err)
 	}
@@ -93,12 +94,16 @@ func main() {
 		}
 	}()
 
+	ctx, done := context.WithCancel(context.Background())
+
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			iceConnectedCtxCancel()
+		} else if connectionState == webrtc.ICEConnectionStateDisconnected {
+			done()
 		}
 	})
 
@@ -133,6 +138,6 @@ func main() {
 	// Output the answer in base64 so we can paste it in browser
 	fmt.Println(signal.Encode(*peerConnection.LocalDescription()))
 
-	// Block forever
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }

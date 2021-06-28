@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -57,23 +58,24 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = peerConnection.Close() }()
 
 	outputTracks := map[string]*webrtc.TrackLocalStaticRTP{}
 
 	// Create Track that we send video back to browser on
-	outputTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video_q", "pion_q")
+	outputTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "video_q", "pion_q")
 	if err != nil {
 		panic(err)
 	}
 	outputTracks["q"] = outputTrack
 
-	outputTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video_h", "pion_h")
+	outputTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "video_h", "pion_h")
 	if err != nil {
 		panic(err)
 	}
 	outputTracks["h"] = outputTrack
 
-	outputTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video_f", "pion_f")
+	outputTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "video_f", "pion_f")
 	if err != nil {
 		panic(err)
 	}
@@ -140,9 +142,16 @@ func main() {
 			}
 		}
 	})
+
+	ctx, done := context.WithCancel(context.Background())
+
 	// Set the handler for ICE connection state and update chan if connected
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
+
+		if connectionState == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
 	})
 
 	// Create an answer
@@ -168,6 +177,6 @@ func main() {
 	// Output the answer in base64 so we can paste it in browser
 	fmt.Println(signal.Encode(*peerConnection.LocalDescription()))
 
-	// Block forever
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }

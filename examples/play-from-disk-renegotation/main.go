@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -69,7 +70,7 @@ func createPeerConnection(w http.ResponseWriter, r *http.Request) {
 // Add a single video track
 func addVideo(w http.ResponseWriter, r *http.Request) {
 	videoTrack, err := webrtc.NewTrackLocalStaticSample(
-		webrtc.RTPCodecCapability{MimeType: "video/vp8"},
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8},
 		fmt.Sprintf("video-%d", randutil.NewMathRandomGenerator().Uint32()),
 		fmt.Sprintf("video-%d", randutil.NewMathRandomGenerator().Uint32()),
 	)
@@ -117,11 +118,18 @@ func main() {
 	if peerConnection, err = webrtc.NewPeerConnection(webrtc.Configuration{}); err != nil {
 		panic(err)
 	}
+	defer func() { _ = peerConnection.Close() }()
+
+	ctx, done := context.WithCancel(context.Background())
 
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
+
+		if connectionState == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
 	})
 
 	http.Handle("/", http.FileServer(http.Dir(".")))
@@ -129,8 +137,13 @@ func main() {
 	http.HandleFunc("/addVideo", addVideo)
 	http.HandleFunc("/removeVideo", removeVideo)
 
-	fmt.Println("Open http://localhost:8080 to access this demo")
-	panic(http.ListenAndServe(":8080", nil))
+	go func() {
+		fmt.Println("Open http://localhost:8080 to access this demo")
+		panic(http.ListenAndServe(":8080", nil))
+	}()
+
+	// Block until shutdown
+	<-ctx.Done()
 }
 
 // Read a video file from disk and write it to a webrtc.Track

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/pion/logging"
@@ -60,6 +61,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = offerPeerConnection.Close() }()
 
 	// We need a DataChannel so we can have ICE Candidates
 	if _, err = offerPeerConnection.CreateDataChannel("custom-logger", nil); err != nil {
@@ -71,6 +73,21 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = answerPeerConnection.Close() }()
+
+	ctx, done := context.WithCancel(context.Background())
+
+	offerPeerConnection.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		if s == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
+	})
+
+	answerPeerConnection.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		if s == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
+	})
 
 	// Set ICE Candidate handler. As soon as a PeerConnection has gathered a candidate
 	// send it to the other peer
@@ -126,5 +143,6 @@ func main() {
 		panic(err)
 	}
 
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }

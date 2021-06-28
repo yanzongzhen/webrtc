@@ -135,17 +135,21 @@ func main() {
 			fmt.Println("Ctrl+C the remote client to stop the demo")
 		} else if connectionState == webrtc.ICEConnectionStateFailed ||
 			connectionState == webrtc.ICEConnectionStateDisconnected {
-			closeErr := oggFile.Close()
-			if closeErr != nil {
+			if closeErr := oggFile.Close(); closeErr != nil {
 				panic(closeErr)
 			}
 
-			closeErr = ivfFile.Close()
-			if closeErr != nil {
+			if closeErr := ivfFile.Close(); closeErr != nil {
 				panic(closeErr)
 			}
 
 			fmt.Println("Done writing media files")
+
+			// Gracefully shutdown the peer connection
+			if closeErr := peerConnection.Close(); closeErr != nil {
+				panic(closeErr)
+			}
+
 			os.Exit(0)
 		}
 	})

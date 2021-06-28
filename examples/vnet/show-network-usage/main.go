@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net"
 	"sync/atomic"
@@ -106,9 +107,24 @@ func main() {
 
 	offerPeerConnection, err := offerAPI.NewPeerConnection(webrtc.Configuration{})
 	panicIfError(err)
+	defer func() { _ = offerPeerConnection.Close() }()
 
 	answerPeerConnection, err := answerAPI.NewPeerConnection(webrtc.Configuration{})
 	panicIfError(err)
+	defer func() { _ = answerPeerConnection.Close() }()
+
+	ctx, done := context.WithCancel(context.Background())
+
+	answerPeerConnection.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		if s == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
+	})
+	offerPeerConnection.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		if s == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
+	})
 
 	// Set ICE Candidate handler. As soon as a PeerConnection has gathered a candidate
 	// send it to the other peer
@@ -158,7 +174,8 @@ func main() {
 	panicIfError(answerPeerConnection.SetLocalDescription(answer))
 	panicIfError(offerPeerConnection.SetRemoteDescription(answer))
 
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }
 
 func panicIfError(err error) {

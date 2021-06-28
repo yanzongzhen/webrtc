@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -52,6 +53,7 @@ func main() { //nolint:gocognit
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = peerConnection.Close() }()
 
 	// When an ICE candidate is available send to the other Pion instance
 	// the other Pion instance will add this candidate by calling AddICECandidate
@@ -113,10 +115,16 @@ func main() { //nolint:gocognit
 		panic(err)
 	}
 
+	ctx, done := context.WithCancel(context.Background())
+
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
+
+		if connectionState == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
 	})
 
 	// Register channel opening handling
@@ -164,6 +172,6 @@ func main() { //nolint:gocognit
 		panic(err)
 	}
 
-	// Block forever
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }

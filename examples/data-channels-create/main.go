@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -25,6 +26,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer func() { _ = peerConnection.Close() }()
 
 	// Create a datachannel with label 'data'
 	dataChannel, err := peerConnection.CreateDataChannel("data", nil)
@@ -32,10 +34,16 @@ func main() {
 		panic(err)
 	}
 
+	ctx, done := context.WithCancel(context.Background())
+
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
+
+		if connectionState == webrtc.ICEConnectionStateDisconnected {
+			done()
+		}
 	})
 
 	// Register channel opening handling
@@ -92,6 +100,6 @@ func main() {
 		panic(err)
 	}
 
-	// Block forever
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }
